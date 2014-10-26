@@ -5,26 +5,29 @@ date: "Sunday, October 26, 2014"
 output: html_document
 ---
 
+```{r, echo=FALSE}
+library(knitr) 
+opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE)
+```
+
+
 ```{r}
-require(rpart);require(ggplot2); require(caret)
+require(rpart);require(xtable); require(caret);require(randomForest)
 ```
 
 
 
 ```{r}
-
-getwd()
-setwd("~/R/Machine-learning-project")
+invisible(setwd("~/R/Machine-learning-project"))
 data <- read.csv("pml-training.csv")
 ```
 
-```{r}
-summary(data$classe)
-```
+#Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
 
-```{r}
+##The Question
 
-```
+Create a prediction model which can identify the class of of exercise being performed
 
 ##Description of the Dataset
 
@@ -38,33 +41,19 @@ Six young health participants were asked to perform one set of 10 repetitions of
 
 Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. We made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg).
 
-
-
 ```{r}
-data2 <- (data[1:10000,-c(1:7)])
-com <- 
-classe <- data2$classe[complete.cases(data2)]
-classe2 <- factor(classe)
-data3 <- data2[complete.cases(data2),-153]
-x <- train(classe~., method = "rpart",data3)
+nas <- apply(data, 2, function(x) length(which(is.na(x))))
+data2 <- data[,nas<500]
+```
 
 
-x2 <- train(data3,classe)
-data4 <- data3[,sapply(data3, class)!="factor"]
-x2 <- train(data4,classe2, method = "rpart")
-
-plot(x2)
-xtab <- table(x2$pred, classe2)
-conufsionMatrix()
+```{r, eval=FALSE}
+table(nas)
+summary(data2[is.na(data2[,2]),])
 ```
 
 
 ```{r}
-nas <- apply(data, 2, function(x) length(which(is.na(x))))
-table(nas)
-data2 <- data[,nas<500]
-summary(data2[is.na(data2[,2]),])
-
 tabs <-apply(data2[,sapply(data2, class)=="factor"],2, function(x) table(table(x))) ##creates a table of tables, showing how many factor levels each variable has and what the distribution is of those buckets
 
 high <- sapply(tabs, function(x) max(as.numeric(names(x)))) ##finds the largest factor level of each variable. Extremly large variables are empty or zero so should be removed fromthe data set.
@@ -72,44 +61,58 @@ high <- sapply(tabs, function(x) max(as.numeric(names(x)))) ##finds the largest 
 remove <- names(data2[,sapply(data2, class)=="factor"])[high == 19216] #create a vector of variables to remove
 
 data3 <-  data2[, -match(remove, names(data2))]
-data3$good <- data3$classe == "A"
-data$good <- as.factor(data3$good)
+#data3$good <- data3$classe == "A"
+#data$good <- as.factor(data3$good)
 ```
 
-
 ```{r}
-sample <- createDataPartition(data3$classe, p = 0.5)
+sample <- createDataPartition(data3$classe, p = 0.7)
 d <- data3[sample[[1]],-c(1:6)]
 fit <- rpart(classe~.,data=d)
-plotcp(fit)
-
-cp <- fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"] ##taken from http://www.statmethods.net/advstats/cart.html
-
-pr.fit <- (prune(fit, cp=cp ))
-printcp(fit)
-plot(pr.fit)
-text(pr.fit)
-pred <- predict(fit2, type="class")
-table(pred, d$classe)
-
+#rand.fit <- train(classe~.,data=d, method="rf", trControl = trainControl(method = "oob"))
+fit <- randomForest(d[,-53], d[,53,], ntree= 501)
 ```
 
 ```{r}
-sample2 <- createDataPartition(data3$good, p = 0.2)
-d2 <- data3[sample2[[1]],-c(1:6,59)]
-d2$good <- factor(d2$good)
-fit2 <- rpart(good~.,data=d2)
-plotcp(fit2)
-pr.fit2 <- (prune(fit2, cp=-0.3 ))
-pred2 <- predict(fit2, type="class")
-table(pred2, d2$good)
-
+d2 <-data3[-sample[[1]],-c(1:6)]
+pred <- predict(fit, d2)
+confusion <- table(pred,d2$classe )
+prediction <- data.frame(table(d2$classe),  Correct = diag(confusion))
+names(prediction)[1:2] <- c("Classes", "Truth")
+prediction$Error <- with(prediction, Truth - Correct)
 ```
 
+
+##Data gathering and exploration
+
+Data was downloaded from a coursera storage drive located [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv). The data was saved to the computer and loaded without any preprocessing into R.
+Once in R the data was examined it was found that `r ncol(data)-ncol(data2)` variables were almost entirely NA values and so were removed from the analysis, on insepction of the remaining variables it was found that `r ncol(data2)-ncol(data3)` additional variables had been classed as factors as there were so many blank observations, these variables were also removed leaving a t toal of `r ncol(data3)`. The first `r ncol(data3)-ncol(d)` variables were administrative and not helpful for the analysis and so were removed. the remaining variables were as follows
 
 ```{r}
-fit3 <- train(good~.,data =d2, method = "rf", prox = F)
+names(d)
 ```
+
+#Analysis
+The data was partitioned into 2 sections for training and cross validation with a ratio of 70% training to 30% cross validation.
+
+A the RandomForest function was used with 501 trees, the resulting confusion matrix was as below
+
+```{r, results='asis'}
+print(xtable(fit$confusion), type = "html")
+```
+
+in order to ensure that the model was not overfitted the remainig 30% of the intital data set was used for cross validation the results can be seen in the table below. The total positive predicitve power of the model was `r sum(prediction$Correct)/sum(prediction$Truth)`
+
+```{r, results='asis'}
+print(xtable(prediction), type = "html")
+```
+
+
+***It is expected that the Out of Sample prediction error will be similar to the cross validation error.***
+
+#Conclusions
+
+ALthough not shown in this document, there was a conisderable amount of learning with regards the using random forests, both in thier efficacy and also the importance of understanding how to set the correct variabes to ensure that the model doesn't get bogged down in unneccesary calculations (the bootstrappping problem)
 
 #References
 
