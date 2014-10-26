@@ -1,0 +1,118 @@
+---
+title: "Machine learning Coursework"
+author: "Jonathan Bourne"
+date: "Sunday, October 26, 2014"
+output: html_document
+---
+
+```{r}
+require(rpart);require(ggplot2); require(caret)
+```
+
+
+
+```{r}
+
+getwd()
+setwd("~/R/Machine-learning-project")
+data <- read.csv("pml-training.csv")
+```
+
+```{r}
+summary(data$classe)
+```
+
+```{r}
+
+```
+
+##Description of the Dataset
+
+The following text is taken from [Groupware HAR project](http://groupware.les.inf.puc-rio.br/har), and describes the data set used in this report. Please see thier website for more information.
+
+This human activity recognition research has traditionally focused on discriminating between different activities, i.e. to predict "which" activity was performed at a specific point in time (like with the Daily Living Activities dataset above). The approach we propose for the Weight Lifting Exercises dataset is to investigate "how (well)" an activity was performed by the wearer. The "how (well)" investigation has only received little attention so far, even though it potentially provides useful information for a large variety of applications,such as sports training.
+
+In this work (see the paper) we first define quality of execution and investigate three aspects that pertain to qualitative activity recognition: the problem of specifying correct execution, the automatic and robust detection of execution mistakes, and how to provide feedback on the quality of execution to the user. We tried out an on-body sensing approach (dataset here), but also an "ambient sensing approach" (by using Microsoft Kinect - dataset still unavailable)
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. We made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg).
+
+
+
+```{r}
+data2 <- (data[1:10000,-c(1:7)])
+com <- 
+classe <- data2$classe[complete.cases(data2)]
+classe2 <- factor(classe)
+data3 <- data2[complete.cases(data2),-153]
+x <- train(classe~., method = "rpart",data3)
+
+
+x2 <- train(data3,classe)
+data4 <- data3[,sapply(data3, class)!="factor"]
+x2 <- train(data4,classe2, method = "rpart")
+
+plot(x2)
+xtab <- table(x2$pred, classe2)
+conufsionMatrix()
+```
+
+
+```{r}
+nas <- apply(data, 2, function(x) length(which(is.na(x))))
+table(nas)
+data2 <- data[,nas<500]
+summary(data2[is.na(data2[,2]),])
+
+tabs <-apply(data2[,sapply(data2, class)=="factor"],2, function(x) table(table(x))) ##creates a table of tables, showing how many factor levels each variable has and what the distribution is of those buckets
+
+high <- sapply(tabs, function(x) max(as.numeric(names(x)))) ##finds the largest factor level of each variable. Extremly large variables are empty or zero so should be removed fromthe data set.
+
+remove <- names(data2[,sapply(data2, class)=="factor"])[high == 19216] #create a vector of variables to remove
+
+data3 <-  data2[, -match(remove, names(data2))]
+data3$good <- data3$classe == "A"
+data$good <- as.factor(data3$good)
+```
+
+
+```{r}
+sample <- createDataPartition(data3$classe, p = 0.5)
+d <- data3[sample[[1]],-c(1:6)]
+fit <- rpart(classe~.,data=d)
+plotcp(fit)
+
+cp <- fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"] ##taken from http://www.statmethods.net/advstats/cart.html
+
+pr.fit <- (prune(fit, cp=cp ))
+printcp(fit)
+plot(pr.fit)
+text(pr.fit)
+pred <- predict(fit2, type="class")
+table(pred, d$classe)
+
+```
+
+```{r}
+sample2 <- createDataPartition(data3$good, p = 0.2)
+d2 <- data3[sample2[[1]],-c(1:6,59)]
+d2$good <- factor(d2$good)
+fit2 <- rpart(good~.,data=d2)
+plotcp(fit2)
+pr.fit2 <- (prune(fit2, cp=-0.3 ))
+pred2 <- predict(fit2, type="class")
+table(pred2, d2$good)
+
+```
+
+
+```{r}
+fit3 <- train(good~.,data =d2, method = "rf", prox = F)
+```
+
+#References
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz3HEpV8wz3
